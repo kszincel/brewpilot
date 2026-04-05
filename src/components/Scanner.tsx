@@ -22,18 +22,12 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Detect mobile + auto-start camera if permission already granted
+  // Detect mobile + auto-start camera if previously granted
   useEffect(() => {
     const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     setIsMobile(mobile);
-    if (mobile && navigator.permissions) {
-      navigator.permissions.query({ name: "camera" as PermissionName }).then((status) => {
-        if (status.state === "granted") {
-          requestCamera();
-        }
-      }).catch(() => {
-        // permissions.query not supported for camera (Safari) - don't auto-start
-      });
+    if (mobile && localStorage.getItem("brewpilot_camera_granted") === "1") {
+      requestCamera();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -98,10 +92,11 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
         video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       streamRef.current = stream;
+      localStorage.setItem("brewpilot_camera_granted", "1");
       setCameraReady(false);
       setCameraActive(true);
     } catch {
-      // Camera denied or unavailable - stay on upload mode
+      localStorage.removeItem("brewpilot_camera_granted");
       setCameraActive(false);
     }
   }
