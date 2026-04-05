@@ -15,13 +15,40 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [flashVisible, setFlashVisible] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Detect mobile
   useEffect(() => {
-    setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
+    const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    setIsMobile(mobile);
+    // Auto-start camera on mobile
+    if (mobile) {
+      requestCamera();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Attach stream to video element when camera becomes active and video ref is available
+  useEffect(() => {
+    if (cameraActive && videoRef.current && streamRef.current) {
+      const video = videoRef.current;
+      video.srcObject = streamRef.current;
+      video.onloadedmetadata = () => {
+        video.play().then(() => setCameraReady(true));
+      };
+    }
+  }, [cameraActive]);
+
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
   const compressImage = useCallback((source: File | HTMLCanvasElement): Promise<string> => {
@@ -60,20 +87,17 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
     setImages((prev) => [...prev, ...compressed].slice(0, 4));
   }
 
-  async function startCamera() {
+  async function requestCamera() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
+      setCameraReady(false);
       setCameraActive(true);
     } catch {
-      // Fallback to file picker if camera denied
-      fileRef.current?.click();
+      // Camera denied or unavailable - stay on upload mode
+      setCameraActive(false);
     }
   }
 
@@ -81,21 +105,28 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setCameraActive(false);
+    setCameraReady(false);
   }
 
   async function capturePhoto() {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !cameraReady) return;
     const video = videoRef.current;
+
+    // Flash effect
+    setFlashVisible(true);
+    setTimeout(() => setFlashVisible(false), 150);
+
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext("2d")!.drawImage(video, 0, 0);
     const dataUrl = await compressImage(canvas);
-    setImages((prev) => [...prev, dataUrl].slice(0, 4));
 
-    if (images.length >= 3) {
-      stopCamera();
-    }
+    setImages((prev) => {
+      const updated = [...prev, dataUrl].slice(0, 4);
+      if (updated.length >= 4) stopCamera();
+      return updated;
+    });
   }
 
   async function handleAnalyze() {
@@ -158,9 +189,9 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
         </div>
       </div>
 
-      {/* Camera / Upload area */}
-      {cameraActive ? (
-        <div className="relative rounded-[2rem] overflow-hidden bg-black">
+      {/* Camera viewfinder (mobile) */}
+      {cameraActive && (
+        <div className="relative rounded-[2rem] overflow-hidden bg-[#271310]">
           <video
             ref={videoRef}
             autoPlay
@@ -168,43 +199,82 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
             muted
             className="w-full aspect-[3/4] object-cover"
           />
-          {/* Viewfinder overlay */}
-          <div className="absolute inset-8 border-2 border-dashed border-[#ffba38]/50 rounded-xl pointer-events-none">
-            <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#ffba38] rounded-tl-lg" />
-            <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#ffba38] rounded-tr-lg" />
-            <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#ffba38] rounded-bl-lg" />
-            <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#ffba38] rounded-br-lg" />
+
+          {/* Flash overlay */}
+          {flashVisible && (
+            <div className="absolute inset-0 bg-white z-20 pointer-events-none" />
+          )}
+
+          {/* Viewfinder frame */}
+          <div className="absolute inset-8 border-2 border-dashed border-[#ffba38]/40 rounded-xl pointer-events-none">
+            <div className="absolute top-0 left-0 w-8 h-8 border-t-3 border-l-3 border-[#ffba38] rounded-tl-lg" />
+            <div className="absolute top-0 right-0 w-8 h-8 border-t-3 border-r-3 border-[#ffba38] rounded-tr-lg" />
+            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-3 border-l-3 border-[#ffba38] rounded-bl-lg" />
+            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-3 border-r-3 border-[#ffba38] rounded-br-lg" />
           </div>
-          {/* Photo count */}
+
+          {/* Photo thumbnails strip */}
           {images.length > 0 && (
-            <div className="absolute top-4 right-4 bg-[#271310]/80 text-[#ffba38] text-xs font-bold px-3 py-1 rounded-full backdrop-blur-sm">
-              {images.length}/4
+            <div className="absolute top-4 left-4 right-4 flex gap-2">
+              {images.map((img, i) => (
+                <div key={i} className="relative">
+                  <img src={img} alt="" className="w-12 h-12 object-cover rounded-lg border-2 border-white/30" />
+                  <button
+                    onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-[#ba1a1a] text-white rounded-full text-[8px] flex items-center justify-center"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 10 }}>close</span>
+                  </button>
+                </div>
+              ))}
+              <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center text-white/50 text-xs font-bold">
+                {images.length}/4
+              </div>
             </div>
           )}
+
           {/* Controls */}
           <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-6">
             <button
-              onClick={stopCamera}
-              className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
+              onClick={() => { stopCamera(); }}
+              className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white active:scale-90 transition-transform"
             >
               <span className="material-symbols-outlined">close</span>
             </button>
             <button
               onClick={capturePhoto}
-              className="w-16 h-16 rounded-full bg-[#ffba38] flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+              disabled={!cameraReady || images.length >= 4}
+              className="w-16 h-16 rounded-full bg-[#ffba38] flex items-center justify-center shadow-lg active:scale-90 transition-transform disabled:opacity-40"
             >
-              <span className="material-symbols-outlined text-[#271310] text-3xl">photo_camera</span>
+              <div className="w-14 h-14 rounded-full border-2 border-[#271310]/20 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[#271310] text-3xl">photo_camera</span>
+              </div>
             </button>
             <button
               onClick={() => { stopCamera(); fileRef.current?.click(); }}
-              className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
+              className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white active:scale-90 transition-transform"
             >
               <span className="material-symbols-outlined">photo_library</span>
             </button>
           </div>
+
+          {/* Done button when photos taken */}
+          {images.length > 0 && (
+            <div className="absolute bottom-24 left-0 right-0 flex justify-center">
+              <button
+                onClick={stopCamera}
+                className="px-6 py-2 rounded-full bg-[#ffba38] text-[#271310] font-bold text-sm shadow-lg"
+              >
+                Done ({images.length} photo{images.length > 1 ? "s" : ""})
+              </button>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="relative rounded-[2rem] p-1 cursor-pointer transition-all group">
+      )}
+
+      {/* Upload area (desktop, or mobile when camera off) */}
+      {!cameraActive && (
+        <div className="relative rounded-[2rem] p-1 transition-all group">
           <div className="border-2 border-dashed border-accent rounded-[1.75rem] p-8 text-center bg-surface-container-lowest relative overflow-hidden">
             {/* Corner brackets */}
             <div className="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-accent rounded-tl-lg" />
@@ -219,10 +289,7 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
                     <div key={i} className="relative">
                       <img src={img} alt="" className="w-20 h-20 object-cover rounded-[1rem]" />
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setImages((prev) => prev.filter((_, j) => j !== i));
-                        }}
+                        onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
                         className="absolute -top-2 -right-2 w-5 h-5 bg-error text-white rounded-full text-xs flex items-center justify-center"
                       >
                         <span className="material-symbols-outlined text-xs">close</span>
@@ -233,7 +300,7 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
                     <div className="flex gap-2">
                       {isMobile && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); startCamera(); }}
+                          onClick={() => requestCamera()}
                           className="w-20 h-20 rounded-[1rem] border-2 border-dashed border-accent/50 flex flex-col items-center justify-center text-accent gap-1"
                         >
                           <span className="material-symbols-outlined text-xl">photo_camera</span>
@@ -241,7 +308,7 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
                         </button>
                       )}
                       <button
-                        onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
+                        onClick={() => fileRef.current?.click()}
                         className="w-20 h-20 rounded-[1rem] border-2 border-dashed border-outline-variant flex flex-col items-center justify-center text-outline gap-1"
                       >
                         <span className="material-symbols-outlined text-xl">add_photo_alternate</span>
@@ -252,14 +319,14 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
                 </div>
               </div>
             ) : (
-              <div className="py-4" onClick={(e) => { if (isMobile) { e.stopPropagation(); e.preventDefault(); } }}>
+              <div className="py-4">
                 <span className="material-symbols-outlined text-4xl text-accent mb-3 block">photo_camera</span>
                 <p className="text-sm text-on-surface font-medium mb-4">Snap your coffee bag</p>
                 <p className="text-xs text-on-surface-variant mb-5">Front label, back label, or any details. 1-4 photos.</p>
                 <div className="flex gap-3 justify-center">
                   {isMobile && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); startCamera(); }}
+                      onClick={() => requestCamera()}
                       className="px-5 py-2.5 rounded-full bg-accent text-[#271310] font-bold text-sm flex items-center gap-2"
                     >
                       <span className="material-symbols-outlined text-lg">photo_camera</span>
@@ -267,7 +334,7 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
                     </button>
                   )}
                   <button
-                    onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
+                    onClick={() => fileRef.current?.click()}
                     className={`px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 ${
                       isMobile
                         ? "border border-outline-variant text-on-surface-variant"
