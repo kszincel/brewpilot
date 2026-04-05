@@ -22,13 +22,18 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Detect mobile
+  // Detect mobile + auto-start camera if permission already granted
   useEffect(() => {
     const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     setIsMobile(mobile);
-    // Auto-start camera on mobile
-    if (mobile) {
-      requestCamera();
+    if (mobile && navigator.permissions) {
+      navigator.permissions.query({ name: "camera" as PermissionName }).then((status) => {
+        if (status.state === "granted") {
+          requestCamera();
+        }
+      }).catch(() => {
+        // permissions.query not supported for camera (Safari) - don't auto-start
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
