@@ -155,10 +155,10 @@ function BrewpilotApp() {
       <div className="max-w-2xl mx-auto px-4 pb-28">
         {/* Header */}
         <header className="py-5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <a href="/" className="flex items-center gap-2">
             <span className="material-symbols-outlined text-accent text-xl">coffee</span>
             <h1 className="text-xl font-black text-primary tracking-tighter">brewpilot</h1>
-          </div>
+          </a>
           <button
             onClick={() => setProfileOpen(true)}
             className="flex items-center gap-1 text-outline hover:text-on-surface-variant transition-colors"
