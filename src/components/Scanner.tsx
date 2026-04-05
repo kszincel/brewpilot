@@ -17,14 +17,20 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
   const [flashVisible, setFlashVisible] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraFileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Detect mobile
+  // Detect mobile + iOS
   useEffect(() => {
-    setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
+    const ua = navigator.userAgent;
+    const mobile = /iPhone|iPad|iPod|Android/i.test(ua);
+    const ios = /iPhone|iPad|iPod/i.test(ua);
+    setIsMobile(mobile);
+    setIsIOS(ios);
   }, []);
 
   // Attach stream to video element when camera becomes active and video ref is available
@@ -293,7 +299,7 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
                     <div className="flex gap-2">
                       {isMobile && (
                         <button
-                          onClick={() => requestCamera()}
+                          onClick={() => isIOS ? cameraFileRef.current?.click() : requestCamera()}
                           className="w-20 h-20 rounded-[1rem] border-2 border-dashed border-accent/50 flex flex-col items-center justify-center text-accent gap-1"
                         >
                           <span className="material-symbols-outlined text-xl">photo_camera</span>
@@ -319,11 +325,11 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
                 <div className="flex gap-3 justify-center">
                   {isMobile && (
                     <button
-                      onClick={() => requestCamera()}
+                      onClick={() => isIOS ? cameraFileRef.current?.click() : requestCamera()}
                       className="px-5 py-2.5 rounded-full bg-accent text-[#271310] font-bold text-sm flex items-center gap-2"
                     >
                       <span className="material-symbols-outlined text-lg">photo_camera</span>
-                      Open Camera
+                      {isIOS ? "Take Photo" : "Open Camera"}
                     </button>
                   )}
                   <button
@@ -349,6 +355,15 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
         type="file"
         accept="image/*"
         multiple
+        onChange={(e) => handleFiles(e.target.files)}
+        className="hidden"
+      />
+      {/* iOS native camera input (no permission prompt) */}
+      <input
+        ref={cameraFileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         onChange={(e) => handleFiles(e.target.files)}
         className="hidden"
       />
