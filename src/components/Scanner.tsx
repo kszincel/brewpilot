@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { BREW_METHODS, type UserPreferences, type CoffeeProfile } from "@/lib/constants";
 import { buildScanPrompt } from "@/lib/prompts";
 
@@ -14,9 +14,20 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
   const [brewMethod, setBrewMethod] = useState(prefs.default_brew_method);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const compressImage = useCallback((file: File): Promise<string> => {
+  useEffect(() => {
+    setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
+  }, []);
+
+  const compressImage = useCallback((source: File | HTMLCanvasElement): Promise<string> => {
+    if (source instanceof HTMLCanvasElement) {
+      return Promise.resolve(source.toDataURL("image/jpeg", 0.85));
+    }
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -37,20 +48,59 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
         };
         img.src = e.target!.result as string;
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(source);
     });
   }, []);
 
   async function handleFiles(files: FileList | null) {
     if (!files) return;
     const compressed = await Promise.all(
-      Array.from(files).slice(0, 4).map(compressImage)
+      Array.from(files).slice(0, 4).map((f) => compressImage(f))
     );
     setImages((prev) => [...prev, ...compressed].slice(0, 4));
   }
 
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setCameraActive(true);
+    } catch {
+      // Fallback to file picker if camera denied
+      fileRef.current?.click();
+    }
+  }
+
+  function stopCamera() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  }
+
+  async function capturePhoto() {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    const dataUrl = await compressImage(canvas);
+    setImages((prev) => [...prev, dataUrl].slice(0, 4));
+
+    if (images.length >= 3) {
+      stopCamera();
+    }
+  }
+
   async function handleAnalyze() {
     if (images.length === 0) return;
+    stopCamera();
     setLoading(true);
     setError(null);
 
@@ -108,57 +158,136 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
         </div>
       </div>
 
-      {/* Upload area - viewfinder style */}
-      <div
-        onClick={() => fileRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
-        className="relative rounded-[2rem] p-1 cursor-pointer transition-all group"
-      >
-        <div className="border-2 border-dashed border-accent rounded-[1.75rem] p-8 text-center bg-surface-container-lowest relative overflow-hidden">
-          {/* Corner brackets */}
-          <div className="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-accent rounded-tl-lg" />
-          <div className="absolute top-3 right-3 w-6 h-6 border-t-2 border-r-2 border-accent rounded-tr-lg" />
-          <div className="absolute bottom-3 left-3 w-6 h-6 border-b-2 border-l-2 border-accent rounded-bl-lg" />
-          <div className="absolute bottom-3 right-3 w-6 h-6 border-b-2 border-r-2 border-accent rounded-br-lg" />
-
-          {images.length > 0 ? (
-            <div className="flex gap-3 justify-center">
-              {images.map((img, i) => (
-                <div key={i} className="relative">
-                  <img src={img} alt="" className="w-20 h-20 object-cover rounded-[1rem]" />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setImages((prev) => prev.filter((_, j) => j !== i));
-                    }}
-                    className="absolute -top-2 -right-2 w-5 h-5 bg-error text-white rounded-full text-xs flex items-center justify-center"
-                  >
-                    <span className="material-symbols-outlined text-xs">close</span>
-                  </button>
-                </div>
-              ))}
-              {images.length < 4 && (
-                <div className="w-20 h-20 rounded-[1rem] border-2 border-dashed border-outline-variant flex items-center justify-center text-outline">
-                  <span className="material-symbols-outlined">add</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="py-4">
-              <span className="material-symbols-outlined text-4xl text-accent mb-3 block">photo_camera</span>
-              <p className="text-sm text-on-surface font-medium">Snap your coffee bag</p>
-              <p className="text-xs text-on-surface-variant mt-1">Front label, back label, or any details. 1-4 photos.</p>
+      {/* Camera / Upload area */}
+      {cameraActive ? (
+        <div className="relative rounded-[2rem] overflow-hidden bg-black">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full aspect-[3/4] object-cover"
+          />
+          {/* Viewfinder overlay */}
+          <div className="absolute inset-8 border-2 border-dashed border-[#ffba38]/50 rounded-xl pointer-events-none">
+            <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#ffba38] rounded-tl-lg" />
+            <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#ffba38] rounded-tr-lg" />
+            <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#ffba38] rounded-bl-lg" />
+            <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#ffba38] rounded-br-lg" />
+          </div>
+          {/* Photo count */}
+          {images.length > 0 && (
+            <div className="absolute top-4 right-4 bg-[#271310]/80 text-[#ffba38] text-xs font-bold px-3 py-1 rounded-full backdrop-blur-sm">
+              {images.length}/4
             </div>
           )}
+          {/* Controls */}
+          <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-6">
+            <button
+              onClick={stopCamera}
+              className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+            <button
+              onClick={capturePhoto}
+              className="w-16 h-16 rounded-full bg-[#ffba38] flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+            >
+              <span className="material-symbols-outlined text-[#271310] text-3xl">photo_camera</span>
+            </button>
+            <button
+              onClick={() => { stopCamera(); fileRef.current?.click(); }}
+              className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white"
+            >
+              <span className="material-symbols-outlined">photo_library</span>
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="relative rounded-[2rem] p-1 cursor-pointer transition-all group">
+          <div className="border-2 border-dashed border-accent rounded-[1.75rem] p-8 text-center bg-surface-container-lowest relative overflow-hidden">
+            {/* Corner brackets */}
+            <div className="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-accent rounded-tl-lg" />
+            <div className="absolute top-3 right-3 w-6 h-6 border-t-2 border-r-2 border-accent rounded-tr-lg" />
+            <div className="absolute bottom-3 left-3 w-6 h-6 border-b-2 border-l-2 border-accent rounded-bl-lg" />
+            <div className="absolute bottom-3 right-3 w-6 h-6 border-b-2 border-r-2 border-accent rounded-br-lg" />
+
+            {images.length > 0 ? (
+              <div>
+                <div className="flex gap-3 justify-center flex-wrap">
+                  {images.map((img, i) => (
+                    <div key={i} className="relative">
+                      <img src={img} alt="" className="w-20 h-20 object-cover rounded-[1rem]" />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setImages((prev) => prev.filter((_, j) => j !== i));
+                        }}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-error text-white rounded-full text-xs flex items-center justify-center"
+                      >
+                        <span className="material-symbols-outlined text-xs">close</span>
+                      </button>
+                    </div>
+                  ))}
+                  {images.length < 4 && (
+                    <div className="flex gap-2">
+                      {isMobile && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startCamera(); }}
+                          className="w-20 h-20 rounded-[1rem] border-2 border-dashed border-accent/50 flex flex-col items-center justify-center text-accent gap-1"
+                        >
+                          <span className="material-symbols-outlined text-xl">photo_camera</span>
+                          <span className="text-[9px] font-bold uppercase">Camera</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
+                        className="w-20 h-20 rounded-[1rem] border-2 border-dashed border-outline-variant flex flex-col items-center justify-center text-outline gap-1"
+                      >
+                        <span className="material-symbols-outlined text-xl">add_photo_alternate</span>
+                        <span className="text-[9px] font-bold uppercase">Upload</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="py-4" onClick={(e) => { if (isMobile) { e.stopPropagation(); e.preventDefault(); } }}>
+                <span className="material-symbols-outlined text-4xl text-accent mb-3 block">photo_camera</span>
+                <p className="text-sm text-on-surface font-medium mb-4">Snap your coffee bag</p>
+                <p className="text-xs text-on-surface-variant mb-5">Front label, back label, or any details. 1-4 photos.</p>
+                <div className="flex gap-3 justify-center">
+                  {isMobile && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startCamera(); }}
+                      className="px-5 py-2.5 rounded-full bg-accent text-[#271310] font-bold text-sm flex items-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-lg">photo_camera</span>
+                      Open Camera
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
+                    className={`px-5 py-2.5 rounded-full font-bold text-sm flex items-center gap-2 ${
+                      isMobile
+                        ? "border border-outline-variant text-on-surface-variant"
+                        : "bg-accent text-[#271310]"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-lg">add_photo_alternate</span>
+                    {isMobile ? "Choose File" : "Upload Photos"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         multiple
         onChange={(e) => handleFiles(e.target.files)}
         className="hidden"

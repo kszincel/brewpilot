@@ -50,7 +50,7 @@ export function ProfileSheet({ open, onClose, prefs, onUpdatePrefs, userEmail }:
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Sheet */}
-      <div className="relative w-full max-w-lg bg-[#fff8f6] rounded-t-[2rem] p-6 pb-10 shadow-[0_-12px_40px_rgba(43,22,17,0.12)] animate-slide-up">
+      <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto bg-[#fff8f6] rounded-t-[2rem] p-6 pb-10 shadow-[0_-12px_40px_rgba(43,22,17,0.12)] animate-slide-up">
         {/* Handle */}
         <div className="w-10 h-1 bg-[#d3c3c0] rounded-full mx-auto mb-6" />
 
@@ -65,12 +65,12 @@ export function ProfileSheet({ open, onClose, prefs, onUpdatePrefs, userEmail }:
         {/* Grinder */}
         <div className="mb-6">
           <label className="text-[10px] uppercase tracking-[0.1em] font-bold text-[#504442] block mb-2">Grinder</label>
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          <div className="flex gap-2 flex-wrap">
             {KNOWN_GRINDERS.map((g) => (
               <button
                 key={g.id}
                 onClick={() => setGrinderId(g.id)}
-                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
                   grinderId === g.id
                     ? "bg-[#271310] text-[#ffba38]"
                     : "bg-white border border-[#d3c3c0] text-[#504442]"
@@ -85,12 +85,12 @@ export function ProfileSheet({ open, onClose, prefs, onUpdatePrefs, userEmail }:
         {/* Default brew method */}
         <div className="mb-8">
           <label className="text-[10px] uppercase tracking-[0.1em] font-bold text-[#504442] block mb-2">Default brew method</label>
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          <div className="flex gap-2 flex-wrap">
             {BREW_METHODS.filter((m) => m.id !== "other").map((m) => (
               <button
                 key={m.id}
                 onClick={() => setDefaultMethod(m.id)}
-                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${
                   defaultMethod === m.id
                     ? "bg-[#271310] text-[#ffba38]"
                     : "bg-white border border-[#d3c3c0] text-[#504442]"
