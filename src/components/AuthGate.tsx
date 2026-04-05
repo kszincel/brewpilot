@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
 interface AuthGateProps {
@@ -16,7 +16,7 @@ export function AuthGate({ children }: AuthGateProps) {
   const [checking, setChecking] = useState(true);
 
   // Check existing session on mount
-  useState(() => {
+  useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setChecking(false);
@@ -24,10 +24,11 @@ export function AuthGate({ children }: AuthGateProps) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setChecking(false);
     });
 
     return () => subscription.unsubscribe();
-  });
+  }, []);
 
   if (checking) {
     return (

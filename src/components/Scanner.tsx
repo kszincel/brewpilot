@@ -44,9 +44,9 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
   async function handleFiles(files: FileList | null) {
     if (!files) return;
     const compressed = await Promise.all(
-      Array.from(files).slice(0, 3).map(compressImage)
+      Array.from(files).slice(0, 4).map(compressImage)
     );
-    setImages((prev) => [...prev, ...compressed].slice(0, 3));
+    setImages((prev) => [...prev, ...compressed].slice(0, 4));
   }
 
   async function handleAnalyze() {
@@ -138,7 +138,7 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
                   </button>
                 </div>
               ))}
-              {images.length < 3 && (
+              {images.length < 4 && (
                 <div className="w-20 h-20 rounded-[1rem] border-2 border-dashed border-outline-variant flex items-center justify-center text-outline">
                   <span className="material-symbols-outlined">add</span>
                 </div>
@@ -146,9 +146,9 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
             </div>
           ) : (
             <div className="py-4">
-              <span className="material-symbols-outlined text-4xl text-accent mb-3 block">qr_code_scanner</span>
-              <p className="text-sm text-on-surface font-medium">Align label within frame</p>
-              <p className="text-xs text-on-surface-variant mt-1">Up to 3 photos of your coffee package</p>
+              <span className="material-symbols-outlined text-4xl text-accent mb-3 block">photo_camera</span>
+              <p className="text-sm text-on-surface font-medium">Snap your coffee bag</p>
+              <p className="text-xs text-on-surface-variant mt-1">Front label, back label, or any details. 1-4 photos.</p>
             </div>
           )}
         </div>

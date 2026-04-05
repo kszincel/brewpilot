@@ -8,6 +8,7 @@ import { Scanner } from "@/components/Scanner";
 import { CoffeeResult } from "@/components/CoffeeResult";
 import { Library } from "@/components/Library";
 import { BottomNav } from "@/components/BottomNav";
+import { ProfileSheet } from "@/components/ProfileSheet";
 import type { UserPreferences, CoffeeProfile } from "@/lib/constants";
 
 type View = "scan" | "result" | "library";
@@ -19,6 +20,8 @@ function BrewpilotApp() {
   const [currentCoffee, setCurrentCoffee] = useState<Partial<CoffeeProfile> | null>(null);
   const [coffees, setCoffees] = useState<CoffeeProfile[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // Load user data
   useEffect(() => {
@@ -26,6 +29,7 @@ function BrewpilotApp() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
+      setUserEmail(user.email || "");
 
       const { data: prefData } = await supabase
         .from("user_preferences")
@@ -117,7 +121,6 @@ function BrewpilotApp() {
     setCoffees((prev) =>
       prev.map((c) => (c.id === id ? { ...c, favorite } : c))
     );
-    // Also update currentCoffee if it's the same
     setCurrentCoffee((prev) => (prev && prev.id === id ? { ...prev, favorite } : prev));
   }, []);
 
@@ -157,13 +160,10 @@ function BrewpilotApp() {
             <h1 className="text-xl font-black text-primary tracking-tighter">brewpilot</h1>
           </div>
           <button
-            onClick={async () => {
-              await supabase.auth.signOut();
-              window.location.reload();
-            }}
-            className="flex items-center gap-1 text-xs text-outline hover:text-on-surface-variant transition-colors"
+            onClick={() => setProfileOpen(true)}
+            className="flex items-center gap-1 text-outline hover:text-on-surface-variant transition-colors"
           >
-            <span className="material-symbols-outlined text-sm">settings</span>
+            <span className="material-symbols-outlined">settings</span>
           </button>
         </header>
 
@@ -191,6 +191,15 @@ function BrewpilotApp() {
 
       {/* Bottom nav */}
       <BottomNav activeView={view} onNavigate={handleNavigate} />
+
+      {/* Profile sheet */}
+      <ProfileSheet
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        prefs={prefs}
+        onUpdatePrefs={setPrefs}
+        userEmail={userEmail}
+      />
     </div>
   );
 }
