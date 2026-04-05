@@ -22,14 +22,9 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Detect mobile + auto-start camera if previously granted
+  // Detect mobile
   useEffect(() => {
-    const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    setIsMobile(mobile);
-    if (mobile && localStorage.getItem("brewpilot_camera_granted") === "1") {
-      requestCamera();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
   }, []);
 
   // Attach stream to video element when camera becomes active and video ref is available
@@ -92,11 +87,9 @@ export function Scanner({ prefs, onResult }: ScannerProps) {
         video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       streamRef.current = stream;
-      localStorage.setItem("brewpilot_camera_granted", "1");
       setCameraReady(false);
       setCameraActive(true);
     } catch {
-      localStorage.removeItem("brewpilot_camera_granted");
       setCameraActive(false);
     }
   }
